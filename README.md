@@ -6,6 +6,101 @@ WHS4-PeBinForge는 Windows x86/x64 네이티브 PE와 .NET Framework 4 PE를 sel
 
 > 이 저장소는 WHS 4기 CTF 및 Windows 로더 구조 학습·검증을 목적으로 합니다. 본인이 소유하거나 명시적으로 허가받은 환경에서만 사용하세요.
 
+## 작동 원리
+
+### EXE를 단순히 복사해서는 실행할 수 없는 이유
+
+Windows의 EXE와 DLL은 곧바로 CPU가 실행할 수 있는 연속된 명령어가 아니라 PE(Portable Executable) 파일입니다. PE에는 코드와 데이터 외에도 섹션 배치, import, base relocation, TLS, 실행 권한, 진입점 같은 로더용 메타데이터가 들어 있습니다. 따라서 PE 파일 전체를 `VirtualAlloc` 영역에 복사한 뒤 첫 바이트를 함수처럼 호출하면 DOS/PE 헤더를 명령어로 해석하게 되며 정상적으로 실행되지 않습니다.
+
+WHS4-PeBinForge는 확장자를 바꾸거나 PE 헤더를 제거하는 변환기가 아닙니다. 입력 PE를 그대로 보존하면서, 해당 PE를 메모리에서 초기화할 수 있는 위치 독립 실행 코어와 첫 바이트의 부트스트랩을 앞에 결합합니다. 결과 BIN의 첫 주소는 원본 EXE의 첫 주소가 아니라 PeBinForge가 만든 `entry()`입니다.
+
+```text
+일반 PE
+[DOS/PE headers][sections][imports][relocations][resources ...]
+        └─ 파일 그대로 복사한 주소는 호출 가능한 entry()가 아님
+
+PeBinForge BIN
+[entry trampoline][PIC 실행 코어][원본 PE와 의존성][검증용 footer]
+        └─ BIN의 첫 바이트부터 호출 가능
+```
+
+### 패키징 단계
+
+`pbf pack`은 먼저 PE 헤더와 CLR 헤더를 검사하여 네이티브/.NET 여부와 x86/x64 아키텍처를 판별합니다. 이후 입력 종류에 맞는 실행 코어를 선택해 하나의 raw BIN을 만듭니다.
+
+네이티브 EXE/DLL은 다음 구조로 패키징됩니다.
+
+```text
+[noargs trampoline]
+[native v3 header]
+[PIC PE mapper]
+[module manifest]
+[페이지 정렬된 주 PE]
+[같이 포함된 사설 DLL들]
+[native v3 footer]
+```
+
+입력 PE와 같은 폴더에서 발견한 동일 아키텍처의 사설 DLL import는 최대 16개까지 재귀적으로 찾아 함께 넣습니다. 시스템 DLL은 번들에 복사하지 않고 실행 시 Windows가 제공하는 모듈을 사용합니다.
+
+.NET Framework 4 어셈블리는 다음 구조로 패키징됩니다.
+
+```text
+[noargs trampoline]
+[managed v2 header]
+[PIC CLR v4 host]
+[페이지 정렬된 관리형 PE]
+[managed v2 footer]
+```
+
+CLR 헤더의 CorFlags를 이용해 x86, x64, AnyCPU를 구분합니다. AnyCPU는 기본적으로 x64 코어를 사용하고 `32BITREQUIRED` 또는 `32BITPREFERRED`가 설정된 PE는 x86 코어를 사용합니다.
+
+### 실행 단계
+
+최소 로더가 담당하는 일은 의도적으로 단순합니다.
+
+```text
+BIN 읽기
+  → VirtualAlloc(PAGE_READWRITE)
+  → BIN 복사
+  → VirtualProtect(PAGE_EXECUTE_READ)
+  → FlushInstructionCache
+  → BIN 첫 주소의 entry() 호출
+```
+
+처음부터 `PAGE_EXECUTE_READWRITE`로 할당하지 않고 쓰기 단계와 실행 단계를 분리합니다. 실제 PE 해석과 초기화는 외부 로더가 아니라 BIN 내부의 self-bootstrap이 수행합니다.
+
+네이티브 BIN의 내부 실행 순서는 다음과 같습니다.
+
+```text
+자기 BIN base 계산
+  → bundle header/footer와 module manifest 확인
+  → 필요한 Windows API 해석
+  → 각 PE의 메모리 이미지 공간 할당
+  → PE 섹션 배치
+  → base relocation 적용
+  → 내장 DLL과 시스템 DLL을 이용해 import/IAT 연결
+  → TLS callback 및 x64 예외 테이블 초기화
+  → 섹션별 최종 메모리 권한 적용
+  → EXE AddressOfEntryPoint 또는 DLL DllMain/PbfEntry 호출
+```
+
+x64 부트스트랩은 RIP-relative 주소 계산을, x86 부트스트랩은 `CALL/POP` 방식을 사용해 고정 주소 없이 자신의 BIN base를 구합니다. 그래서 `VirtualAlloc`이 어느 주소를 반환하더라도 같은 BIN을 실행할 수 있습니다.
+
+.NET BIN은 PE를 네이티브 명령어로 직접 실행하지 않습니다. 내부 PIC 호스트가 CLR v4를 시작하고, 번들에 포함된 어셈블리 바이트를 메모리에서 로드한 뒤 어셈블리 진입점인 매개변수 없는 정적 `int Main()`을 호출합니다. 원본 관리형 EXE를 임시 파일로 풀지 않지만, 대상 시스템에는 .NET Framework 4 런타임이 있어야 합니다.
+
+### 두 가지 진입 ABI
+
+- `entry()`: 아무 인자도 필요 없는 독립 실행 경로입니다. 사용자가 만든 최소 로더처럼 BIN 첫 주소만 호출할 때 사용합니다.
+- `entry(&context)`: 입력값, 결과값, proof, 상태 코드 같은 정보를 전문 러너와 주고받는 검증 경로입니다.
+
+`CreateThread`의 시작 함수는 `DWORD WINAPI function(LPVOID)` 호출 규약을 요구하므로 BIN의 noargs `entry()`를 그대로 `LPTHREAD_START_ROUTINE`으로 캐스팅하지 않습니다. `thread-memory-loader`는 올바른 스레드 시작 함수가 BIN의 `entry()`를 대신 호출하는 ABI 어댑터를 사용합니다.
+
+### 무결성 검증 범위
+
+패키징 시 BIN과 함께 `.sha256` sidecar가 생성됩니다. `pbf run`과 전문 러너는 실행 전에 이를 확인하며, 선택적으로 ECDSA 서명까지 강제할 수 있습니다. 반면 `simple-memory-loader`는 BIN 자체의 독립성을 보여주는 예제라서 의도적으로 header, footer, hash를 해석하지 않습니다. 검증이 필요한 환경에서는 최소 로더가 아니라 `pbf run --pubkey ...` 또는 전문 러너를 사용해야 합니다.
+
+이 도구가 만드는 결과물은 범용 기계어 변환본이 아니라 원본 PE와 실행 코어를 결합한 Windows 전용 번들입니다. BIN과 실행 프로세스의 아키텍처가 일치해야 하며, 원본 프로그램이 요구하는 운영체제 기능과 .NET 런타임 조건도 그대로 적용됩니다.
+
 ## 빠른 시작
 
 ### 1. 빌드
