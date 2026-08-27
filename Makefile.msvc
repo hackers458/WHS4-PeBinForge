@@ -4,9 +4,9 @@ INCLUDES = /Iinclude
 
 CC = cl
 LD = link
-COMMON_CFLAGS = /nologo /W4 /O2 /TC $(INCLUDES)
+COMMON_CFLAGS = /nologo /W4 /O2 /TC /MT $(INCLUDES)
 
-all: dirs $(OUTDIR)\pbfgen.exe $(OUTDIR)\pbf-runner.exe $(OUTDIR)\simple-memory-loader.exe $(OUTDIR)\thread-memory-loader.exe $(OUTDIR)\injection-target.exe $(OUTDIR)\peprobe.exe $(OUTDIR)\native-maptest.exe $(OUTDIR)\native-bin-gen.exe $(OUTDIR)\native-bin-runner.exe $(OUTDIR)\clr-maptest.exe $(OUTDIR)\managed-bin-pack.exe $(OUTDIR)\managed-bin-runner.exe $(OUTDIR)\pbf.exe $(OUTDIR)\native-demo.dll $(OUTDIR)\native-demo.bin $(OUTDIR)\native-exe-demo.exe $(OUTDIR)\native-exe-demo.bin $(OUTDIR)\example\TEST.EXE $(OUTDIR)\example\TEST.bin $(OUTDIR)\demo.bin $(OUTDIR)\standalone-demo.bin $(OBJDIR)\reloc_bad.obj
+all: dirs $(OUTDIR)\pbfgen.exe $(OUTDIR)\pbf-runner.exe $(OUTDIR)\simple-memory-loader.exe $(OUTDIR)\thread-memory-loader.exe $(OUTDIR)\injection-target.exe $(OUTDIR)\peprobe.exe $(OUTDIR)\native-maptest.exe $(OUTDIR)\native-bin-gen.exe $(OUTDIR)\native-bin-runner.exe $(OUTDIR)\clr-maptest.exe $(OBJDIR)\managed_pic_stub.obj $(OUTDIR)\managed-bin-pack.exe $(OUTDIR)\managed-bin-runner.exe $(OUTDIR)\pbf.exe $(OUTDIR)\native-demo.dll $(OUTDIR)\native-demo.bin $(OUTDIR)\native-exe-demo.exe $(OUTDIR)\native-exe-demo.bin $(OUTDIR)\example\TEST.EXE $(OUTDIR)\example\TEST.bin $(OUTDIR)\demo.bin $(OUTDIR)\standalone-demo.bin $(OBJDIR)\reloc_bad.obj
 
 dirs:
 	@if not exist "$(OUTDIR)" mkdir "$(OUTDIR)"

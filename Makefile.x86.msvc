@@ -4,10 +4,10 @@ INCLUDES = /Iinclude
 
 CC = cl
 LD = link
-COMMON_CFLAGS = /nologo /W4 /O2 /TC $(INCLUDES)
+COMMON_CFLAGS = /nologo /W4 /O2 /TC /MT $(INCLUDES)
 X86_BASE = /BASE:0x10000000
 
-all: dirs $(OBJDIR)\native_stub.obj $(OUTDIR)\simple-memory-loader-x86.exe $(OUTDIR)\thread-memory-loader-x86.exe $(OUTDIR)\native-demo-x86.dll $(OUTDIR)\native-demo-x86.bin $(OUTDIR)\native-exe-demo-x86.exe $(OUTDIR)\native-exe-demo-x86.bin $(OUTDIR)\fixed-exe-demo-x86.exe $(OUTDIR)\fixed-exe-demo-x86.bin $(OUTDIR)\clr-maptest-x86.exe $(OUTDIR)\managed-bin-runner-x86.exe
+all: dirs $(OBJDIR)\native_stub.obj $(OBJDIR)\managed_pic_stub.obj $(OUTDIR)\simple-memory-loader-x86.exe $(OUTDIR)\thread-memory-loader-x86.exe $(OUTDIR)\native-demo-x86.dll $(OUTDIR)\native-demo-x86.bin $(OUTDIR)\native-exe-demo-x86.exe $(OUTDIR)\native-exe-demo-x86.bin $(OUTDIR)\fixed-exe-demo-x86.exe $(OUTDIR)\fixed-exe-demo-x86.bin $(OUTDIR)\clr-maptest-x86.exe $(OUTDIR)\managed-bin-runner-x86.exe
 
 dirs:
 	@if not exist "$(OUTDIR)" mkdir "$(OUTDIR)"
